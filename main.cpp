@@ -10,49 +10,50 @@
 class CacheObj
 {
 public:
-    CacheObj(unsigned int keyo, int valueo = 0, unsigned int usageo = 0): key(keyo), value(valueo), lru_usage(usageo) {}
-    CacheObj(const CacheObj &cctor): key(cctor.key), value(cctor.value), lru_usage(cctor.lru_usage) {}
+    CacheObj(unsigned int keyo, int valueo = 0, unsigned int usageo = 0): key(keyo), value(valueo), mru_usage(usageo) {}
+    CacheObj(const CacheObj &cctor): key(cctor.key), value(cctor.value), mru_usage(cctor.mru_usage) {}
     CacheObj &operator=(const CacheObj &assigno) {
         if (this == & assigno)
             return *this;
         key = assigno.key;
         value = assigno.value;
-        lru_usage = assigno.lru_usage;
+        mru_usage = assigno.mru_usage;
         return *this;
     }
 
     bool operator > (const CacheObj &othrObj) {
-        return lru_usage > othrObj.lru_usage;
+        return mru_usage > othrObj.mru_usage;
     }
     bool operator >= (const CacheObj &othrObj) {
-        return lru_usage >= othrObj.lru_usage;
+        return mru_usage >= othrObj.mru_usage;
     }
     bool operator < (const CacheObj &othrObj) {
-        return lru_usage < othrObj.lru_usage;
+        return mru_usage < othrObj.mru_usage;
     }
     bool operator <= (const CacheObj &othrObj) {
-        return lru_usage <= othrObj.lru_usage;
+        return mru_usage <= othrObj.mru_usage;
     }
     bool operator == (const CacheObj &othrObj) {
-        return (lru_usage == othrObj.lru_usage);
+        return (mru_usage == othrObj.mru_usage);
     }
     bool operator != (const CacheObj &othrObj) {
-        return (lru_usage != othrObj.lru_usage);
+        return (mru_usage != othrObj.mru_usage);
     }
 
     friend std::ostream &operator << (std::ostream &out, const CacheObj &cacheObje) {
-        return out << "key: " << cacheObje.key << ", value: " << cacheObje.value << ", lru_usage: " << cacheObje.lru_usage << std::endl;
+        return out << "key: " << cacheObje.key << ", value: " << cacheObje.value << ", mru_usage: " << cacheObje.mru_usage << std::endl;
     }
 
     //for simplicity we keep all variables public for direct access
     unsigned int key;
     int value;
-    unsigned int lru_usage;
+    unsigned int mru_usage;
 };
 
 class LRUCache
 {
 public:
+
     LRUCache(unsigned int cachesize = 100): m_maximum_cache_size(cachesize) {
         m_cacheUnOrderMap.reserve(m_maximum_cache_size);
     }
@@ -61,38 +62,56 @@ public:
         m_cacheMap.clear();
     }
 
+    void printLRUCacheObjList() {
+        std::cout <<  "Start of lru CacheObjs: " << std::endl;
+        std::map<unsigned int, CacheObj>::reverse_iterator rit = m_cacheMap.rbegin();
+        std::pair<mltimp_t::iterator, mltimp_t::iterator> keyItr = m_cacheMap.equal_range(rit->first /* a m_cacheMap key */);
+        for(mltimp_t::const_iterator cItr = keyItr.first; cItr != keyItr.second; ++cItr) {
+            CacheObj tmpObj = cItr->second;
+            std::cout << "\t" <<  tmpObj;
+        }
+
+        std::cout <<  "End of lru CacheObjs. " << std::endl;
+    }
+
     /* this reads CacheObj if exists, or other wise adds it as new (removing old less used CacheObj if needed) */
     CacheObj &getInsertCacheObj(CacheObj &cacheObje) {
         /* check if CacheObj already member of cache */
         std::unordered_map<unsigned int, unsigned int>::iterator fndIt = m_cacheUnOrderMap.find(cacheObje.key);
         if (fndIt != m_cacheUnOrderMap.end()) {
-            CacheObj tmpObj = m_cacheMap.at(fndIt->second /* a m_cacheMap key */);
-            m_cacheMap.erase(fndIt->second /* a m_cacheMap key */);
+            std::pair<mltimp_t::iterator, mltimp_t::iterator> keyItr = m_cacheMap.equal_range(fndIt->second /* a m_cacheMap key */);
 
-            /* update lru status */
-            tmpObj.lru_usage++;
-            m_cacheMap.insert(std::pair<unsigned int, CacheObj>(tmpObj.lru_usage, tmpObj));
+            for(mltimp_t::const_iterator cItr = keyItr.first; cItr != keyItr.second; ++cItr) {
+                CacheObj tmpObj = cItr->second;
+                if(tmpObj.key ==  cacheObje.key) {
+                    m_cacheMap.erase(cItr);
+                    /* update lru status */
+                    tmpObj.mru_usage++;
+                    m_cacheMap.insert(std::pair<unsigned int, CacheObj>(tmpObj.mru_usage, tmpObj));
+                    /* update this CacheObj in m_cacheUnOrderMap */
+                    m_cacheUnOrderMap.at(tmpObj.key) = tmpObj.mru_usage;
+                    cacheObje = tmpObj;
+                    break;
+                }
+            }
 
-            /* update this CacheObj in m_cacheUnOrderMap */
-            m_cacheUnOrderMap.at(tmpObj.key) = tmpObj.lru_usage;
-
-            return m_cacheMap.at(tmpObj.lru_usage);
+            /* should not reach here,  nevertheless,  return this same passed CacheObj */
+            return cacheObje;
         } else {
             /* insert this new CacheObj */
 
             /* check available capacity */
             if (m_cacheUnOrderMap.size() <= m_maximum_cache_size) {
-                m_cacheMap.insert(std::pair<unsigned int, CacheObj>(cacheObje.lru_usage, cacheObje));
-                m_cacheUnOrderMap.insert(std::pair<unsigned int, unsigned int>(cacheObje.key, cacheObje.lru_usage));
+                m_cacheMap.insert(std::pair<unsigned int, CacheObj>(cacheObje.mru_usage, cacheObje));
+                m_cacheUnOrderMap.insert(std::pair<unsigned int, unsigned int>(cacheObje.key, cacheObje.mru_usage));
             } else {
                 std::map<unsigned int, CacheObj>::reverse_iterator rit = m_cacheMap.rbegin();
                 CacheObj tmpobj = rit->second;
-                m_cacheMap.erase(tmpobj.lru_usage);
+                m_cacheMap.erase(tmpobj.mru_usage);
                 m_cacheUnOrderMap.erase(tmpobj.key);
 
-                m_cacheMap.insert(std::pair<unsigned int, CacheObj>(cacheObje.lru_usage, cacheObje));
-                m_cacheUnOrderMap.insert(std::pair<unsigned int, unsigned int>(cacheObje.key, cacheObje.lru_usage));
-
+                m_cacheMap.insert(std::pair<unsigned int, CacheObj>(cacheObje.mru_usage, cacheObje));
+                m_cacheUnOrderMap.insert(std::pair<unsigned int, unsigned int>(cacheObje.key, cacheObje.mru_usage));
             }
 
             /* return this same passed CacheObj */
@@ -105,18 +124,26 @@ public:
         /* check if CacheObj already member of cache */
         std::unordered_map<unsigned int, unsigned int>::iterator fndIt = m_cacheUnOrderMap.find(cacheObje.key);
         if (fndIt != m_cacheUnOrderMap.end()) {
-            CacheObj tmpObj = m_cacheMap.at(fndIt->second /* a m_cacheMap key */);
-            m_cacheMap.erase(fndIt->second /* a m_cacheMap key */);
 
-            //update CacheObj
-            tmpObj = cacheObje;
+            std::pair<mltimp_t::iterator, mltimp_t::iterator> keyItr = m_cacheMap.equal_range(fndIt->second /* a m_cacheMap key */);
 
-            m_cacheMap.insert(std::pair<unsigned int, CacheObj>(tmpObj.lru_usage, tmpObj));
+            for(mltimp_t::const_iterator cItr = keyItr.first; cItr != keyItr.second; ++cItr) {
+                CacheObj tmpObj = cItr->second;
+                if(tmpObj.key ==  cacheObje.key) {
+                    m_cacheMap.erase(cItr);
 
-            /* update this CacheObj in m_cacheUnOrderMap */
-            m_cacheUnOrderMap.at(tmpObj.key) = tmpObj.lru_usage;
+                    /* copy to passed CacheObj */
+                    tmpObj = cacheObje;
+                    /* update lru status */
+                    tmpObj.mru_usage++;
+                    m_cacheMap.insert(std::pair<unsigned int, CacheObj>(tmpObj.mru_usage, tmpObj));
+                    /* update this CacheObj in m_cacheUnOrderMap */
+                    m_cacheUnOrderMap.at(tmpObj.key) = tmpObj.mru_usage;
+                    return true;
+                }
+            }
 
-            return true;
+            return false;
         }
 
         return false;
@@ -124,10 +151,10 @@ public:
 
     friend std::ostream &operator << (std::ostream &out, const LRUCache &lrucacheObje) {
 
-        for (std::map<unsigned int, CacheObj >::const_iterator cacheObjIt = lrucacheObje.m_cacheMap.begin();
+        for (std::multimap<unsigned int, CacheObj >::const_iterator cacheObjIt = lrucacheObje.m_cacheMap.begin();
                 cacheObjIt != lrucacheObje.m_cacheMap.end(); ++cacheObjIt) {
-				CacheObj tmpObj = cacheObjIt->second;
-				out << tmpObj;
+            CacheObj tmpObj = cacheObjIt->second;
+            out << tmpObj;
         }
         return out;
     }
@@ -136,7 +163,8 @@ public:
 private:
     unsigned int m_maximum_cache_size;
     std::unordered_map < unsigned int, unsigned int /* key to m_cacheMap */ > m_cacheUnOrderMap;
-    std::map<unsigned int, CacheObj, std::greater<unsigned int>> m_cacheMap;	/* flawed by design!*/
+    typedef std::multimap<unsigned int, CacheObj, std::greater<unsigned int>> mltimp_t;
+    mltimp_t m_cacheMap;
 };
 
 int main(int argc, char *argv[])
@@ -150,25 +178,35 @@ int main(int argc, char *argv[])
     std::chrono::high_resolution_clock::time_point tstart = std::chrono::high_resolution_clock::now();
 
     try {
-        unsigned int tmpkeyo = 1;
-        CacheObj obj1(tmpkeyo++, 22, 1);
-        CacheObj obj2(tmpkeyo++, 23, 5);
-        CacheObj obj3(tmpkeyo++, 24, 2);
-        CacheObj obj4(tmpkeyo++, 25, 4);
 
-		LRUCache lruCache(5);
-		lruCache.getInsertCacheObj(obj1);
-		lruCache.getInsertCacheObj(obj2);
-		lruCache.getInsertCacheObj(obj3);
-		lruCache.getInsertCacheObj(obj4);
+    /* note the the key should be unique not checking in ctor for simplicity */
+        CacheObj obj1(1, 22, 1);
+        CacheObj obj2(2, 23, 5);
+        CacheObj obj21(3, 23, 5);
+        CacheObj obj3(4, 24, 2);
+        CacheObj obj4(5, 25, 4);
+        CacheObj obj11(6, 22, 1);
 
-		std::cout << lruCache << std::endl;
+        LRUCache lruCache(5);
+        lruCache.getInsertCacheObj(obj1);
+        lruCache.getInsertCacheObj(obj2);
+        lruCache.getInsertCacheObj(obj3);
+        lruCache.getInsertCacheObj(obj4);
+        lruCache.getInsertCacheObj(obj21);
+        lruCache.getInsertCacheObj(obj11);
 
-		//lets increase lru of obj4 to 6
-		obj4.lru_usage = 7;
-		lruCache.setUpdateCacheObj(obj4);
+        std::cout << lruCache << std::endl;
 
-		std::cout << lruCache << std::endl;
+        //lets increase lru of obj4 to 6
+        obj4.mru_usage = 7;
+        lruCache.setUpdateCacheObj(obj4);
+        // let read obj21 this should increase its mru
+        lruCache.getInsertCacheObj(obj21);
+
+        std::cout << lruCache << std::endl;
+
+        /* print list of lru cache objects */
+        lruCache.printLRUCacheObjList();
 
 
 
@@ -183,3 +221,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+
